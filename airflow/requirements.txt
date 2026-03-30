@@ -1,0 +1,4 @@
+duckdb==1.5.1
+google-cloud-storage==3.10.1
+google-cloud-bigquery==3.40.1
+apache-airflow-providers-google==21.0.0
