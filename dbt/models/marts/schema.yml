@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: mart_otp_summary
+    description: "Daily on-time performance by route. On-time = arrival delay between -1 and +5 minutes."
+    columns:
+      - name: dt
+        description: "Service date"
+        data_tests:
+          - not_null
+      - name: route_id
+        description: "Route identifier"
+        data_tests:
+          - not_null
+      - name: total_observations
+        description: "Number of deduplicated trip-stop observations"
+      - name: on_time_count
+        description: "Number of on-time observations"
+      - name: otp_pct
+        description: "On-time performance percentage"
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - dt
+            - route_id

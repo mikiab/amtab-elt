@@ -1,0 +1,99 @@
+version: 2
+
+models:
+  - name: stg_trip_updates
+    description: "GTFS-RT trip update events with normalized route IDs and timestamps"
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - entity_id
+            - feed_at
+          config:
+            severity: warn
+    columns:
+      - name: entity_id
+        data_tests:
+          - not_null
+      - name: trip_id
+        data_tests:
+          - not_null
+      - name: stop_id
+        data_tests:
+          - not_null
+      - name: arrival_delay
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: -60
+              max_value: 120
+              config:
+                severity: warn
+      - name: feed_at
+        data_tests:
+          - not_null
+
+  - name: stg_vehicle_positions
+    description: "GTFS-RT vehicle position snapshots with normalized route IDs and timestamps"
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - entity_id
+            - feed_at
+          config:
+            severity: warn
+    columns:
+      - name: entity_id
+        data_tests:
+          - not_null
+      - name: trip_id
+        data_tests:
+          - not_null
+      - name: vehicle_id
+        data_tests:
+          - not_null
+      - name: latitude
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 40.9
+              max_value: 41.3
+              config:
+                severity: warn
+      - name: longitude
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 16.6
+              max_value: 17.1
+              config:
+                severity: warn
+      - name: speed
+        data_tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 120
+              config:
+                severity: warn
+
+  - name: stg_routes
+    description: "GTFS static route definitions"
+    columns:
+      - name: route_id
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stg_stops
+    description: "GTFS static stop locations"
+    columns:
+      - name: stop_id
+        data_tests:
+          - not_null
+          - unique
+
+  - name: stg_stop_times
+    description: "GTFS static scheduled arrival/departure times"
+    columns:
+      - name: trip_id
+        data_tests:
+          - not_null
+      - name: stop_id
+        data_tests:
+          - not_null

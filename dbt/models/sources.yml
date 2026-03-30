@@ -1,0 +1,23 @@
+version: 2
+
+sources:
+  - name: amtab
+    database: "{{ env_var('GCP_PROJECT_ID') }}"
+    schema: "{{ env_var('BQ_DATASET', 'amtab_transit') }}"
+    tables:
+      - name: trip_updates
+        description: "GTFS-RT trip update events (external table on Parquet)"
+      - name: vehicle_position
+        description: "GTFS-RT vehicle position snapshots (external table on Parquet)"
+      - name: routes
+        description: "GTFS static route definitions"
+      - name: stops
+        description: "GTFS static stop locations"
+      - name: stop_times
+        description: "GTFS static scheduled arrival/departure times per stop"
+      - name: trips
+        description: "GTFS static trip definitions"
+      - name: calendar
+        description: "GTFS static service calendar"
+      - name: feed_info
+        description: "GTFS static feed validity period"

@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: int_trip_updates
+    description: "Deduplicated trip updates, one per trip/stop/sequence/day"
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - trip_id
+            - stop_id
+            - stop_sequence
+            - dt
+    columns:
+      - name: trip_id
+        data_tests:
+          - not_null
+      - name: arrival_delay
+        data_tests:
+          - not_null
+      - name: dt
+        data_tests:
+          - not_null

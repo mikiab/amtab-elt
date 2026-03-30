@@ -1,0 +1,17 @@
+name: amtab_transit
+version: "1.0.0"
+
+profile: amtab_transit
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+models:
+  amtab_transit:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table

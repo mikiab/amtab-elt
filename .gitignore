@@ -26,6 +26,7 @@ airflow/plugins/__pycache__/
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
+dbt/.user.yml
 
 # Archives
 tmp_archives/
