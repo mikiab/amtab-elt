@@ -31,9 +31,6 @@ dbt/logs/
 tmp_archives/
 output/
 
-# uv
-uv.lock
-
 # IDE / OS
 .vscode/
 .idea/

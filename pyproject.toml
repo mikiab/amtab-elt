@@ -1,0 +1,22 @@
+[project]
+name = "amtab-elt"
+version = "0.1.0"
+description = "AMTAB Bari GTFS/GTFS-RT ELT pipeline"
+requires-python = ">=3.12"
+dependencies = [
+    "dbt-core>=1.10.0",
+    "dbt-bigquery>=1.10.0",
+    "streamlit>=1.55.0",
+    "google-cloud-bigquery>=3.40.1",
+    "plotly>=6.6.0",
+]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+
+[dependency-groups]
+dev = [
+    "apache-airflow>=3.1.8",
+    "duckdb>=1.5.1",
+]
