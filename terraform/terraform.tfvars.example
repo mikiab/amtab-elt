@@ -1,0 +1,5 @@
+project_id       = "your-gcp-project-id"
+region           = "us-central1"
+location         = "US"
+gcs_bucket_prefix = "amtab-elt"
+bq_dataset_id    = "amtab_transit"
