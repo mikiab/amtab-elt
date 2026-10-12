@@ -40,7 +40,7 @@ kafka-up:
 
 kafka-topics:
 	@echo "Creating topics"
-	docker exec -it redpanda-0 rpk topic create $(KAFKA_TOPICS)
+	docker exec redpanda-0 rpk topic create $(KAFKA_TOPICS)
 
 kafka-down:
 	@echo "Stopping redpanda"
