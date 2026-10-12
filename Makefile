@@ -7,8 +7,8 @@ DBT_FLAGS = --project-dir dbt --profiles-dir dbt
 STREAMING = ./streaming
 REDPANDA_VERSION = v26.2.1
 REDPANDA_CONSOLE_VERSION = v3.10.0
-KAFKA_TOPICS = vehicle-position trip-updates \
-	       vehicle-position.dlq trip-updates.dlq
+KAFKA_TOPICS = vehicle-positions trip-updates \
+	       vehicle-positions.dlq trip-updates.dlq
 
 .PHONY: setup airflow-up airflow-down dbt dbt-docs dashboard \
 	kafka-up kafka-down kafka-topics

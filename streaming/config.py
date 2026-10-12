@@ -75,7 +75,7 @@ VEHICLES = FeedConfig(
     name="vehicles",
     url=os.getenv("FEED_VEHICLES_URL", ""),
     topic="vehicle-positions",
-    dlq_topic="vehicle-position.dlq",
+    dlq_topic="vehicle-positions.dlq",
     entity_field="Vehicle",
 )
 
