@@ -10,6 +10,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from zoneinfo import ZoneInfo
 
 import pyarrow as pa
@@ -24,7 +25,6 @@ from confluent_kafka import (
     Message,
     TopicPartition,
 )
-from fsspec.utils import tempfile
 from pydantic import BaseModel, ConfigDict
 from stats import Stats
 
@@ -38,9 +38,6 @@ def handle_signal(signum, _):
     global running
     running = False
     logger.info("Shutdown requested (signal: %s)", signum)
-
-
-LATENESS = 60
 
 
 class PoisonMessage(Exception):
@@ -192,7 +189,7 @@ def write_parquet(dt: date, rows: list[dict], base_path: Path) -> Path:
     try:
         dest_path.mkdir(exist_ok=True, parents=True)
         table = pa.Table.from_pylist(rows, SCHEMA)
-        with tempfile.NamedTemporaryFile(
+        with NamedTemporaryFile(
             "wb", dir=dest_path, prefix="_", suffix=".parquet", delete_on_close=False
         ) as tmp:
             pq.write_table(table, tmp)
