@@ -94,6 +94,57 @@ A commit never gets ahead of what is on disk, so *no record is lost*. A crash
 between write and commit replays the last batch, so *duplicates are possible*. 
 The Silver layer removes them using `(kafka_partition, kafka_offset)`, which 
 identifies a Kafka record uniquely.
+
+### Rebalancing
+
+Each feed has its own consumer group, so a rebalance only happens when a
+consumer starts, stops, or is considered dead by the broker. A rebalance on one
+feed never pauses the other.
+
+The consumer registers an `on_revoke` callback. `librdkafka` calls it inside
+`consume()` or `close()`, on the consumer's own thread, so a revocation never
+interrupts a batch halfway through. When partitions are revoked:
+
+1. The buffer is flushed to Parquet.
+2. Offsets are committed synchronously, so the next owner starts right after
+   the last record written to disk.
+
+If nothing was consumed since the last commit, the commit is skipped.
+
+The callback behaves differently after a failure. If an exception has already
+stopped the consumer (for example a failed Parquet write), a `failed` flag is
+set before `close()` triggers the revocation, and the callback skips both
+the flush and the commit. Committing at that point would move the offsets past
+records that were never written.
+
+If the consumer loses its group membership (session timeout, or too long
+between two `consume()` calls), the next commit fails with `UNKNOWN_MEMBER_ID`
+or `ILLEGAL_GENERATION`. The consumer stops without retrying: those partitions
+already belong to another member, which replays the uncommitted records. The
+result is duplicates, never data loss.
+
+### Dead-letter queue (in progress)
+
+Some messages can never be processed, however many times they are retried:
+invalid JSON, an envelope that fails validation, a missing key, an impossible
+timestamp. Stopping the consumer for one of these would block the whole
+partition, so they will be published to a per-feed DLQ topic instead:
+
+- the original key and value, unchanged;
+- headers with the error message, the source topic, partition and offset, and
+  the failure time.
+
+Only per-message problems go to the DLQ. Infrastructure failures (a write or
+commit error) and configuration errors (a topic using `LogAppendTime`) stop the
+consumer instead, because every following message would fail the same way.
+
+A message sent to the DLQ counts as processed, so its offset is committed with
+the next batch, but only after the DLQ producer has flushed and confirmed
+delivery. If delivery fails, the consumer stops without committing.
+
+Planned next: a circuit breaker that stops the consumer when the share of
+messages going to the DLQ exceeds a threshold, since that usually means a
+broken producer rather than a few bad messages.
  
 ### Failure handling
  
