@@ -231,7 +231,7 @@ The 2025 archive is used to match the real-time data period.
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install)
 - Terraform >= 1.0
 - Docker and Docker Compose v2.14+
-- Python 3.12+
+- Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
 - make
 
