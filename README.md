@@ -1,7 +1,5 @@
 # AMTAB Bari - GTFS ELT Pipeline
 
-> Data Engineering Zoomcamp 2026 - Final Project
-
 ## Project Description
 
 [AMTAB](https://www.amtab.it/en) is the public transit company serving Bari,
@@ -16,14 +14,118 @@ stops served within an acceptable delay window (between -1 and +5 minutes).
 The resulting dashboard lets transit planners identify the worst-performing
 routes and track OTP trends over time.
 
-This is a **batch processing** project: historical data is ingested,
-transformed, and loaded on a monthly schedule.
+This project started as a **batch processing** pipeline: historical data is
+ingested, transformed, and loaded on a monthly schedule. A [**streaming
+ingestion**](#streaming-ingestion-in-progress) based on Kafka is being added on
+top of it.
 
 ## Architecture
 
 The pipeline architecture is shown below:
 
 ![pipeline](./pipeline_diagram_elt.png "AMTAB ELT Pipeline")
+
+## Streaming Ingestion (in progress)
+
+The streaming path polls AMTAB's live GTFS-RT feeds, publishes every entity to 
+Kafka, and lands the raw records in a **Bronze** layer of date-partitioned 
+Parquet files. The batch pipeline is unchanged.
+
+```mermaid
+flowchart LR
+    API[AMTAB GTFS-RT<br/>REST API] --> PV[Producer<br/>vehicle positions]
+    API --> PT[Producer<br/>trip updates]
+    PV --> TV[(topic<br/>vehicle-positions)]
+    PT --> TT[(topic<br/>trip-updates)]
+    TV --> CV[FeedConsumer<br/>vehicles]
+    TT --> CT[FeedConsumer<br/>trip updates]
+    CV --> B[Bronze Parquet<br/>streaming/&lt;feed&gt;/dt=YYYY-MM-DD/]
+    CT --> B
+    CV -.planned.-> DLQ[(DLQ topics)]
+    CT -.planned.-> DLQ
+```
+
+The diagram shows the architecture: two topics are fed by two producer
+processes and read by two consumers, each in its own consumer group.
+
+The **message key** is `TripId` so all updates for a trip land in the same 
+partition and stay ordered. When an entity has no `TripId`, the entity `Id` is 
+used as a fallback, and a `valid_key` flag records which key was used. 
+
+For each message, the producer sets the Kafka timestamp to the **event time**: 
+the *vehicle timestamp*, or the *feed header timestamp* for *trip updates*.
+
+Consumers write each file **atomically** and **durably**: rows go to a temporary 
+file, which is `fsync`ed and then renamed, so readers never see a partial file. 
+A UTC timestamp and a random suffix in the name prevent collisions:
+`part-<YYYYMMDDTHHMMSSZ>-<id>.parquet`.
+
+### Medallion layers
+
+Both paths follow the medallion architecture:
+
+| Layer | Batch path | Streaming path |
+|-------|------------|----------------|
+| Bronze | Parquet converted from the JSON archives, on GCS | Raw Kafka records as Parquet, Hive-partitioned by event date |
+| Silver | dbt `staging` + `intermediate` (cleaning, typing, deduplication) | Planned: deduplication on `(kafka_partition, kafka_offset)` |
+| Gold | dbt `mart` (`mart_otp_summary`) | Shared with batch |
+
+The bronze schema is the following:
+ 
+| Column | Type | Source |
+|--------|------|--------|
+| `feed` | string | envelope |
+| `feed_ts` | timestamp (UTC) | envelope |
+| `ingest_ts` | timestamp (UTC) | envelope |
+| `valid_key` | bool | envelope |
+| `kafka_partition` | int32 | Kafka |
+| `kafka_offset` | int64 | Kafka |
+| `kafka_key` | string | Kafka |
+| `kafka_event_ts` | timestamp ms (UTC) | Kafka |
+| `payload` | string (JSON) | the GTFS-RT entity |
+
+
+### Delivery semantics: at-least-once
+ 
+**Auto-commit is disabled**: the consumer buffers rows, writes them to Parquet, 
+and commits offsets only after the write succeeds.
+
+A commit never gets ahead of what is on disk, so *no record is lost*. A crash 
+between write and commit replays the last batch, so *duplicates are possible*. 
+The Silver layer removes them using `(kafka_partition, kafka_offset)`, which 
+identifies a Kafka record uniquely.
+ 
+### Failure handling
+ 
+The consumer doesn't try to heal itself: on any unexpected error it stops 
+*without committing* and lets a supervisor restart it (Docker restart policy).
+
+On restart it resumes from the last committed offset. Kafka retention is the
+buffer while the problem is being fixed.
+
+The table below shows the failure scenarios and the corresponding behaviour:
+ 
+| Failure | Behaviour |
+|---------|-----------|
+| Parquet write fails | Stop without committing; the batch is replayed on restart |
+| Commit fails, retriable | Retry with backoff (5 attempts), then stop |
+| Commit fails, consumer left the group | Stop; the new owner replays the uncommitted records |
+| Commit fails, unknown or fatal error | Stop |
+| Poison message (bad JSON, schema, key or timestamp) | Logged and skipped. Dead-letter queue in progress |
+| Topic uses `LogAppendTime` | `ConfigurationError`: stop, someone must fix the topic |
+| Fatal Kafka client error | Stop |
+ 
+
+### Running the tests
+
+The streaming code lives in `streaming/`. 
+
+Unit tests cover parsing and validation, the buffer, the atomic writer, and the 
+consumer's commit and failure paths with a fake Kafka consumer:
+
+```bash
+uv run pytest
+```
 
 ## Dataset
 
