@@ -166,6 +166,33 @@ The table below shows the failure scenarios and the corresponding behaviour:
 | Topic uses `LogAppendTime` | `ConfigurationError`: stop, someone must fix the topic |
 | Fatal Kafka client error | Stop |
  
+### Running locally
+
+Start Redpanda and create the topics:
+
+```bash
+make kafka-up
+make kafka-topics
+```
+
+Start the producer in one terminal:
+
+```bash
+export FEED_VEHICLES_URL="https://avl.amtab.it/WSExportGTFS_RT/api/gtfs/VehiclePosition"
+uv run python streaming/producer.py --feed vehicles
+```
+
+Start the consumer in another terminal:
+
+```bash
+export DATA_LAKE_PATH=data/bronze
+uv run python streaming/consumer.py --topic vehicle-positions
+```
+
+Stop them with `Ctrl+C`: the consumer flushes its buffer and commits before
+exiting. Bronze files land under `$DATA_LAKE_PATH/<feed>/dt=YYYY-MM-DD/`.
+
+Redpanda Console is available at `http://localhost:8088`.
 
 ### Running the tests
 
