@@ -271,10 +271,11 @@ class FeedConsumer:
     @contextmanager
     def _create_consumer(self):
         consumer = Consumer(
-            self.settings.consumer_config(),
-            enable_auto_commit=False,
-            auto_offset_reset="earliest",
-            group_id=f"amtab-parquet-{self.feed_config.name}",
+            {
+                **self.settings.consumer_config(),
+                "auto.offset.reset": "earliest",
+                "group.id": f"amtab-parquet-{self.feed_config.name}",
+            }
         )
         try:
             consumer.subscribe(

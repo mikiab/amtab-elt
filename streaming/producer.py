@@ -35,15 +35,14 @@ def new_message(entity: dict, feed: str, feed_ts: int | None) -> dict:
 
 
 # Bronze: only check if the response is malformed
-def produce(feed_cfg: FeedConfig):
+def produce(feed_config: FeedConfig):
     settings = Settings()
     stats = Stats()
-    # idempotency enables acks=all, illimitate retries and max.in.flight=5
-    # ensuring no duplicates and re-ordering in the case of retries
     producer = Producer(
-        settings.producer_config(),
-        client_id=socket.gethostname(),
-        enable_idempotence=True,
+        {
+            **settings.producer_config(),
+            "client.id": socket.gethostname(),
+        }
     )
     while running:
         count: int = 0
@@ -51,7 +50,7 @@ def produce(feed_cfg: FeedConfig):
         producer.poll(0.0)
         try:
             feed = fetch_feed(
-                feed_cfg.url,
+                feed_config.url,
                 settings.http_timeout_s,
                 settings.http_max_retries,
                 settings.http_backoff_base_s,
@@ -59,15 +58,15 @@ def produce(feed_cfg: FeedConfig):
             feed_ts: int = feed["Header"]["Timestamp"]
             for count, entity in enumerate(feed["Entities"], start=1):
                 try:
-                    message = new_message(entity, feed_cfg.name, feed_ts)
-                    key, is_fallback = feed_cfg.key(message)
+                    message = new_message(entity, feed_config.name, feed_ts)
+                    key, is_fallback = feed_config.key(message)
                     if key:
                         message["meta"]["valid_key"] = not is_fallback
-                        event_time = feed_cfg.event_time(message)
+                        event_time = feed_config.event_time(message)
                         # Publishing is asynchronous, meaning the delivery
                         # status of the message is handled inside the callback.
                         producer.produce(
-                            feed_cfg.topic,
+                            feed_config.topic,
                             json.dumps(message),
                             str(key).encode("utf-8"),
                             timestamp=event_time * 1000,
@@ -78,7 +77,7 @@ def produce(feed_cfg: FeedConfig):
                         logger.warning(
                             "message discarded",
                             extra={
-                                "feed": feed_cfg.name,
+                                "feed": feed_config.name,
                                 "entity_id": entity.get("Id"),
                                 "feed_ts": feed_ts,
                                 "reason": "missing key",
@@ -89,7 +88,7 @@ def produce(feed_cfg: FeedConfig):
                     logger.warning(
                         "message discarded",
                         extra={
-                            "feed": feed_cfg.name,
+                            "feed": feed_config.name,
                             "entity_id": entity.get("Id"),
                             "feed_ts": feed_ts,
                             "reason": exc,
@@ -99,7 +98,7 @@ def produce(feed_cfg: FeedConfig):
             logger.warning(
                 "feed unavailable",
                 extra={
-                    "feed": feed_cfg.name,
+                    "feed": feed_config.name,
                     "reason": exc,
                 },
             )
@@ -107,7 +106,7 @@ def produce(feed_cfg: FeedConfig):
             logger.fatal(
                 "unexpected error",
                 extra={
-                    "feed": feed_cfg.name,
+                    "feed": feed_config.name,
                     "reason": exc,
                 },
             )
@@ -120,7 +119,7 @@ def produce(feed_cfg: FeedConfig):
             stats.discarded,
             stats.failed,
             extra={
-                "feed": feed_cfg.name,
+                "feed": feed_config.name,
             },
         )
 
@@ -133,7 +132,7 @@ def produce(feed_cfg: FeedConfig):
             "shutdown with %d messages not delivered",
             remaining,
             extra={
-                "feed": feed_cfg.name,
+                "feed": feed_config.name,
             },
         )
 
@@ -150,7 +149,4 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    if args.feed == VEHICLES.name:
-        produce(VEHICLES)
-    else:
-        produce(TRIPS)
+    produce(FEEDS[args.feed])

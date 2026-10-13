@@ -36,12 +36,8 @@ class FeedConfig:
 class Settings:
     bootstrap_servers: str = os.getenv("KAFKA_BOOTSTRAP", "localhost:19092")
     # Producer
-    acks: str = os.getenv("KAFKA_ACKS", "all")
     linger_ms: int = int(os.getenv("KAFKA_LINGER_MS", "100"))
     compression_type: str = os.getenv("KAFKA_COMPRESSION", "lz4")
-
-    # Consumer
-    group_id: str = os.getenv("KAFKA_GROUP_ID", "")
 
     poll_interval_s: float = float(os.getenv("POLL_INTERVAL_SECONDS", "30"))
 
@@ -57,18 +53,22 @@ class Settings:
     # - acks
     # - retries
     # - delivery.timeout.ms
-
+    # idempotency enables acks=all, illimitate retries and max.in.flight=5
+    # ensuring no duplicates and re-ordering in the case of retries
     def producer_config(self) -> dict:
         return {
             "bootstrap.servers": self.bootstrap_servers,
-            "acks": self.acks,
             "linger.ms": self.linger_ms,
             "compression.type": self.compression_type,
+            "enable.idempotence": True,
         }
 
     def consumer_config(self) -> dict:
         """Get the configuration parameters for the consumer"""
-        return {"bootstrap.servers": self.bootstrap_servers, "group.id": self.group_id}
+        return {
+            "bootstrap.servers": self.bootstrap_servers,
+            "enable.auto.commit": False,
+        }
 
 
 VEHICLES = FeedConfig(
