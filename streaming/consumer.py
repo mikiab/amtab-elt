@@ -10,6 +10,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from zoneinfo import ZoneInfo
 
 import pyarrow as pa
@@ -24,7 +25,6 @@ from confluent_kafka import (
     Message,
     TopicPartition,
 )
-from fsspec.utils import tempfile
 from pydantic import BaseModel, ConfigDict
 from stats import Stats
 
@@ -38,9 +38,6 @@ def handle_signal(signum, _):
     global running
     running = False
     logger.info("Shutdown requested (signal: %s)", signum)
-
-
-LATENESS = 60
 
 
 class PoisonMessage(Exception):
@@ -192,7 +189,7 @@ def write_parquet(dt: date, rows: list[dict], base_path: Path) -> Path:
     try:
         dest_path.mkdir(exist_ok=True, parents=True)
         table = pa.Table.from_pylist(rows, SCHEMA)
-        with tempfile.NamedTemporaryFile(
+        with NamedTemporaryFile(
             "wb", dir=dest_path, prefix="_", suffix=".parquet", delete_on_close=False
         ) as tmp:
             pq.write_table(table, tmp)
@@ -274,10 +271,11 @@ class FeedConsumer:
     @contextmanager
     def _create_consumer(self):
         consumer = Consumer(
-            self.settings.consumer_config(),
-            enable_auto_commit=False,
-            auto_offset_reset="earliest",
-            group_id=f"amtab-parquet-{self.feed_config.name}",
+            {
+                **self.settings.consumer_config(),
+                "auto.offset.reset": "earliest",
+                "group.id": f"amtab-parquet-{self.feed_config.name}",
+            }
         )
         try:
             consumer.subscribe(
@@ -371,14 +369,9 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    settings = Settings(data_lake_path=Path.home() / "streaming" / "bronze")
-    if args.topic == VEHICLES.topic:
-        feed_config = VEHICLES
-    else:
-        feed_config = TRIPS
-
+    settings = Settings()
     try:
-        FeedConsumer(feed_config, settings).consume()
+        FeedConsumer(TOPICS[args.topic], settings).consume()
     except (ParquetWriteError, CommitError, ConfigurationError, KafkaException):
         logger.critical("consumer stopped", exc_info=True)
         sys.exit(1)
