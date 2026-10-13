@@ -369,14 +369,9 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    settings = Settings(data_lake_path=Path.home() / "streaming" / "bronze")
-    if args.topic == VEHICLES.topic:
-        feed_config = VEHICLES
-    else:
-        feed_config = TRIPS
-
+    settings = Settings()
     try:
-        FeedConsumer(feed_config, settings).consume()
+        FeedConsumer(TOPICS[args.topic], settings).consume()
     except (ParquetWriteError, CommitError, ConfigurationError, KafkaException):
         logger.critical("consumer stopped", exc_info=True)
         sys.exit(1)
