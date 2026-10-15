@@ -2,23 +2,24 @@ import json
 import logging
 import signal
 import socket
+import threading
 import time
 
-from config import FEEDS, TRIPS, VEHICLES, FeedConfig, Settings
+from config import FEEDS, FeedConfig, Settings
 from confluent_kafka import Producer
 from feed import FeedUnavailable, fetch_feed
 from stats import Stats
 
 logger = logging.getLogger(__name__)
 
-running: bool = True
 
 GTFS_RT_URI = "https://avl.amtab.it/WSExportGTFS_RT/api/gtfs"
 
+stop_running = threading.Event()
+
 
 def handle_signal(signum, _):
-    global running
-    running = False
+    stop_running.set()
     logger.info("Shutdown requested (signal: %s)", signum)
 
 
@@ -44,7 +45,7 @@ def produce(feed_config: FeedConfig):
             "client.id": socket.gethostname(),
         }
     )
-    while running:
+    while not stop_running.is_set():
         count: int = 0
         t0 = time.monotonic()
         producer.poll(0.0)
@@ -124,7 +125,7 @@ def produce(feed_config: FeedConfig):
         )
 
         elapsed = time.monotonic() - t0
-        time.sleep(max(0, settings.poll_interval_s - elapsed))
+        stop_running.wait(max(0, settings.poll_interval_s - elapsed))
 
     remaining = producer.flush(timeout=10)
     if remaining > 0:
