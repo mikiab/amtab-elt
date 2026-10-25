@@ -36,8 +36,7 @@ def new_message(entity: dict, feed: str, feed_ts: int | None) -> dict:
 
 
 # Bronze: only check if the response is malformed
-def produce(feed_config: FeedConfig):
-    settings = Settings()
+def produce(feed_config: FeedConfig, settings: Settings):
     stats = Stats()
     producer = Producer(
         {
@@ -150,4 +149,5 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    produce(FEEDS[args.feed])
+    settings = Settings()
+    produce(FEEDS[args.feed], settings)

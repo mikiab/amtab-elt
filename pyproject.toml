@@ -12,6 +12,7 @@ dependencies = [
     "confluent-kafka>=2.15.0",
     "pydantic>=2.12.5",
     "pyarrow>=23.0.1",
+    "pydantic-settings>=2.16.0",
 ]
 
 [tool.pyright]

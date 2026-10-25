@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from config import TOPICS, TRIPS, VEHICLES, FeedConfig, Settings
+from config import TOPICS, FeedConfig, Settings
 from confluent_kafka import (
     TIMESTAMP_LOG_APPEND_TIME,
     TIMESTAMP_NOT_AVAILABLE,
@@ -25,7 +25,7 @@ from confluent_kafka import (
     Message,
     TopicPartition,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from stats import Stats
 
 logger = logging.getLogger(__name__)
@@ -369,10 +369,16 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    settings = Settings()
     try:
+        settings = Settings()
         FeedConsumer(TOPICS[args.topic], settings).consume()
-    except (ParquetWriteError, CommitError, ConfigurationError, KafkaException):
+    except (
+        ParquetWriteError,
+        CommitError,
+        ConfigurationError,
+        KafkaException,
+        ValidationError,
+    ):
         logger.critical("consumer stopped", exc_info=True)
         sys.exit(1)
     except RestartConsumer:

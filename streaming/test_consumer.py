@@ -18,7 +18,8 @@ from consumer import (
     to_row,
     write_parquet,
 )
-from fake_consumer import FakeConsumer, fatal_error, retriable_error, unknown_error
+from fake_consumer import FakeConsumer, retriable_error, unknown_error
+from pydantic import ValidationError
 
 ################################################################################
 ##                           to_row() tests                                   ##
@@ -368,6 +369,17 @@ from pytest import MonkeyPatch
 
 
 @pytest.fixture
+def make_settings(monkeypatch: MonkeyPatch, tmp_path: Path):
+    monkeypatch.setenv("AMTAB_KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    monkeypatch.setenv("AMTAB_DATA_LAKE_PATH", str(tmp_path))
+
+    def _make(**overrides) -> Settings:
+        return Settings(_env_file=None, **overrides)
+
+    return _make
+
+
+@pytest.fixture
 def create_fake_consumer(monkeypatch: MonkeyPatch):
     def _create_consumer(
         batches: list[list[Message]], commit_errors: list[KafkaException] | None = None
@@ -388,7 +400,7 @@ def create_fake_consumer(monkeypatch: MonkeyPatch):
 
 
 # -- Case 1: CommitError after exhausting all retriable error attempts
-def test_commit_error(create_fake_consumer, tmp_path: Path):
+def test_commit_error(create_fake_consumer, make_settings):
     fake: FakeConsumer = create_fake_consumer(
         batches=[
             # 1st consume() call returns only one message
@@ -396,14 +408,14 @@ def test_commit_error(create_fake_consumer, tmp_path: Path):
         ],
         commit_errors=[retriable_error()] * 6,
     )
-    settings = Settings(data_lake_path=tmp_path)
+    settings = make_settings()
     with pytest.raises(CommitError):
         FeedConsumer(VEHICLES, settings).consume()
     assert fake.commit_attempts == 6
 
 
 # -- Case 2: two retriable errors, then success returns one commit
-def test_commit_success(create_fake_consumer, tmp_path: Path):
+def test_commit_success(create_fake_consumer, make_settings):
     fake: FakeConsumer = create_fake_consumer(
         batches=[
             # 1st consume() call returns only one message
@@ -411,14 +423,14 @@ def test_commit_success(create_fake_consumer, tmp_path: Path):
         ],
         commit_errors=[retriable_error()] * 2,
     )
-    settings = Settings(data_lake_path=tmp_path)
+    settings = make_settings()
     FeedConsumer(VEHICLES, settings).consume()
     assert fake.commits == 1
     assert fake.commit_attempts == 3
 
 
 # -- Case 3: An unknown error results in exactly one attempt, without any retries.
-def test_attempts_on_error(create_fake_consumer, tmp_path: Path):
+def test_attempts_on_error(create_fake_consumer, make_settings):
     fake: FakeConsumer = create_fake_consumer(
         batches=[
             # 1st consume() call returns only one message
@@ -426,21 +438,21 @@ def test_attempts_on_error(create_fake_consumer, tmp_path: Path):
         ],
         commit_errors=[unknown_error()],
     )
-    settings = Settings(data_lake_path=tmp_path)
+    settings = make_settings()
     with pytest.raises(KafkaException):
         FeedConsumer(VEHICLES, settings).consume()
     assert fake.commit_attempts == 1
 
 
 # -- Case 4: exactly one commit on normal shutdown
-def test_commit_on_shutdown(create_fake_consumer, tmp_path: Path):
+def test_commit_on_shutdown(create_fake_consumer, make_settings, tmp_path: Path):
     fake: FakeConsumer = create_fake_consumer(
         batches=[
             # 1st consume() call returns only one message
             [Message(**VALID)]
         ],
     )
-    settings = Settings(data_lake_path=tmp_path)
+    settings = make_settings()
     FeedConsumer(VEHICLES, settings).consume()
     assert fake.commits == 1
     assert fake.closed
@@ -449,7 +461,7 @@ def test_commit_on_shutdown(create_fake_consumer, tmp_path: Path):
 
 # -- Case 5: failure in the final write results in zero commits
 def test_final_write_failure(
-    create_fake_consumer, tmp_path: Path, monkeypatch: MonkeyPatch
+    create_fake_consumer, make_settings, tmp_path: Path, monkeypatch: MonkeyPatch
 ):
     def fail_write(*args, **kwargs):
         raise ParquetWriteError("disk full")
@@ -462,9 +474,28 @@ def test_final_write_failure(
             [Message(**VALID)]
         ],
     )
-    settings = Settings(data_lake_path=tmp_path)
+    settings = make_settings()
     with pytest.raises(ParquetWriteError):
         FeedConsumer(VEHICLES, settings).consume()
     # a failed write must prevent any commit attempt
     assert fake.commit_attempts == 0
     assert not list(tmp_path.rglob("*.parquet"))
+
+
+################################################################################
+##                             Settings tests                                 ##
+################################################################################
+
+
+def test_rejects_missing_bootstrap_servers(make_settings, monkeypatch: MonkeyPatch):
+    monkeypatch.delenv("AMTAB_KAFKA_BOOTSTRAP_SERVERS")
+    with pytest.raises(ValidationError, match="kafka_bootstrap_servers"):
+        make_settings()
+
+
+def test_rejects_zero_poll_interval(make_settings):
+    with pytest.raises(ValidationError) as exc_info:
+        make_settings(poll_interval_s=0)
+    [error] = exc_info.value.errors()
+    assert error["loc"] == ("poll_interval_s",)
+    assert error["type"] == "greater_than"

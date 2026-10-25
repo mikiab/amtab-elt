@@ -166,6 +166,24 @@ The table below shows the failure scenarios and the corresponding behaviour:
 | Topic uses `LogAppendTime` | `ConfigurationError`: stop, someone must fix the topic |
 | Fatal Kafka client error | Stop |
  
+### Configuration
+
+Producer and consumer read their settings from environment variables with the
+`AMTAB_` prefix, or from a `.env` file in the working directory. Values are
+validated at startup: a missing required variable or an invalid value stops
+the process immediately with a `ValidationError` that names the field.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AMTAB_KAFKA_BOOTSTRAP_SERVERS` | required | Kafka brokers, e.g. `localhost:19092` |
+| `AMTAB_DATA_LAKE_PATH` | required | Root directory of the Bronze Parquet files |
+| `AMTAB_KAFKA_LINGER_MS` | `100` | Producer batching delay in ms; `0` sends immediately |
+| `AMTAB_KAFKA_COMPRESSION_TYPE` | `lz4` | One of `none`, `gzip`, `snappy`, `lz4`, `zstd` |
+| `AMTAB_POLL_INTERVAL_S` | `30.0` | Seconds between two polls of the GTFS-RT feed |
+| `AMTAB_HTTP_TIMEOUT_S` | `10.0` | HTTP request timeout in seconds |
+| `AMTAB_HTTP_MAX_RETRIES` | `3` | Retries of a failed feed request; `0` disables them |
+| `AMTAB_HTTP_BACKOFF_BASE_S` | `1.0` | Base of the exponential backoff between retries, in seconds |
+
 ### Running locally
 
 Start Redpanda and create the topics:
@@ -173,6 +191,13 @@ Start Redpanda and create the topics:
 ```bash
 make kafka-up
 make kafka-topics
+```
+
+Set the required variables (or put them in `.env`):
+
+```bash
+export AMTAB_KAFKA_BOOTSTRAP_SERVERS=localhost:19092
+export AMTAB_DATA_LAKE_PATH=data/bronze
 ```
 
 Start the producer in one terminal:
@@ -185,12 +210,11 @@ uv run python streaming/producer.py --feed vehicles
 Start the consumer in another terminal:
 
 ```bash
-export DATA_LAKE_PATH=data/bronze
 uv run python streaming/consumer.py --topic vehicle-positions
 ```
 
 Stop them with `Ctrl+C`: the consumer flushes its buffer and commits before
-exiting. Bronze files land under `$DATA_LAKE_PATH/<feed>/dt=YYYY-MM-DD/`.
+exiting. Bronze files land under `$AMTAB_DATA_LAKE_PATH/<feed>/dt=YYYY-MM-DD/`.
 
 Redpanda Console is available at `http://localhost:8088`.
 
