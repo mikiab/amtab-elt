@@ -1,7 +1,12 @@
+# config.py
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import NonNegativeInt, PositiveFloat
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 @dataclass(frozen=True)
@@ -32,22 +37,26 @@ class FeedConfig:
         return meta["feed_ts"]
 
 
-@dataclass(frozen=True)
-class Settings:
-    bootstrap_servers: str = os.getenv("KAFKA_BOOTSTRAP", "localhost:19092")
-    # Producer
-    linger_ms: int = int(os.getenv("KAFKA_LINGER_MS", "100"))
-    compression_type: str = os.getenv("KAFKA_COMPRESSION", "lz4")
+CompressionType = Literal["none", "gzip", "snappy", "lz4", "zstd"]
 
-    poll_interval_s: float = float(os.getenv("POLL_INTERVAL_SECONDS", "30"))
+
+class Settings(BaseSettings):
+    kafka_bootstrap_servers: str
+
+    # Producer
+    kafka_linger_ms: NonNegativeInt = 100
+    kafka_compression_type: CompressionType = "lz4"
+    poll_interval_s: PositiveFloat = 30.0
 
     # HTTP
-    http_timeout_s: float = float(os.getenv("HTTP_TIMEOUT_SECONDS", "10"))
-    http_max_retries: int = int(os.getenv("HTTP_MAX_RETRIES", "3"))
-    http_backoff_base_s: float = float(os.getenv("HTTP_BACKOFF_BASE_SECONDS", "1"))
+    http_timeout_s: PositiveFloat = 10.0
+    http_max_retries: NonNegativeInt = 3
+    http_backoff_base_s: PositiveFloat = 1.0
 
     # Data Lake path
-    data_lake_path: Path = Path(os.getenv("DATA_LAKE_PATH", ""))
+    data_lake_path: Path
+
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="AMTAB_")
 
     # Producer settings affecting the retry mechanism
     # - acks
@@ -57,16 +66,16 @@ class Settings:
     # ensuring no duplicates and re-ordering in the case of retries
     def producer_config(self) -> dict:
         return {
-            "bootstrap.servers": self.bootstrap_servers,
-            "linger.ms": self.linger_ms,
-            "compression.type": self.compression_type,
+            "bootstrap.servers": self.kafka_bootstrap_servers,
+            "linger.ms": self.kafka_linger_ms,
+            "compression.type": self.kafka_compression_type,
             "enable.idempotence": True,
         }
 
     def consumer_config(self) -> dict:
         """Get the configuration parameters for the consumer"""
         return {
-            "bootstrap.servers": self.bootstrap_servers,
+            "bootstrap.servers": self.kafka_bootstrap_servers,
             "enable.auto.commit": False,
         }
 
