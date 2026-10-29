@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -104,6 +104,8 @@ dependencies = [
 dev = [
     { name = "apache-airflow" },
     { name = "duckdb" },
+]
+test = [
     { name = "pyarrow-stubs" },
     { name = "pytest" },
 ]
@@ -125,6 +127,8 @@ requires-dist = [
 dev = [
     { name = "apache-airflow", specifier = ">=3.1.8" },
     { name = "duckdb", specifier = ">=1.5.1" },
+]
+test = [
     { name = "pyarrow-stubs", specifier = ">=20.0.0.20260819" },
     { name = "pytest", specifier = ">=9.1.1" },
 ]
