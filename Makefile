@@ -22,6 +22,10 @@ airflow-up:
 airflow-down:
 	cd airflow && docker compose down
 
+dbt-parse:
+	uv run dbt deps $(DBT_FLAGS)
+	uv run dbt parse $(DBT_FLAGS)
+
 dbt:
 	uv run dbt deps $(DBT_FLAGS)
 	uv run dbt seed $(DBT_FLAGS)

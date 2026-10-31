@@ -1,5 +1,7 @@
 # AMTAB Bari - GTFS ELT Pipeline
 
+[![CI](https://github.com/mikiab/amtab-elt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mikiab/amtab-elt/actions/workflows/ci.yml)
+
 ## Project Description
 
 [AMTAB](https://www.amtab.it/en) is the public transit company serving Bari,
