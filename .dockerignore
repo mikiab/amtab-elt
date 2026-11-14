@@ -1,0 +1,7 @@
+.env
+keys/
+.venv/
+data/
+tmp_archives/
+.git/
+tmp-bronze/

@@ -167,7 +167,7 @@ The table below shows the failure scenarios and the corresponding behaviour:
 | Poison message (bad JSON, schema, key or timestamp) | Logged and skipped. Dead-letter queue in progress |
 | Topic uses `LogAppendTime` | `ConfigurationError`: stop, someone must fix the topic |
 | Fatal Kafka client error | Stop |
- 
+
 ### Configuration
 
 Producer and consumer read their settings from environment variables with the
@@ -178,29 +178,57 @@ the process immediately with a `ValidationError` that names the field.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AMTAB_KAFKA_BOOTSTRAP_SERVERS` | required | Kafka brokers, e.g. `localhost:19092` |
+| `AMTAB_LOG_LEVEL` | `INFO` | Log level. Accepted values: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 | `AMTAB_DATA_LAKE_PATH` | required | Root directory of the Bronze Parquet files |
 | `AMTAB_KAFKA_LINGER_MS` | `100` | Producer batching delay in ms; `0` sends immediately |
 | `AMTAB_KAFKA_COMPRESSION_TYPE` | `lz4` | One of `none`, `gzip`, `snappy`, `lz4`, `zstd` |
 | `AMTAB_POLL_INTERVAL_S` | `30.0` | Seconds between two polls of the GTFS-RT feed |
+| `AMTAB_FLUSH_MAX_ROWS` | `5000` | Number of rows to batch before the consumer flushes records |
+| `AMTAB_FLUSH_INTERVAL_S` | `3600` | Seconds elapsed before the consumer flushes records |
 | `AMTAB_HTTP_TIMEOUT_S` | `10.0` | HTTP request timeout in seconds |
 | `AMTAB_HTTP_MAX_RETRIES` | `3` | Retries of a failed feed request; `0` disables them |
 | `AMTAB_HTTP_BACKOFF_BASE_S` | `1.0` | Base of the exponential backoff between retries, in seconds |
 
 ### Running locally
 
-Start Redpanda and create the topics:
+Start Redpanda, create the topics and run the producers and consumers for both
+the `vehicle-positions` and `trip-updates` topics:
+
+```bash
+make up
+```
+
+Redpanda Console is available at `http://localhost:8088`.
+
+During ingestion, the consumer writes Parquet files to the `data-lake` volume.
+The consumer logs can be monitored by running:
+
+```bash
+docker compose --project-directory streaming logs -f consumer-vehicles consumer-trips
+```
+
+Use `make down` to stop all running services.
+
+#### Local development (optional)
+
+The Makefile also provides rules to start the broker, create the topics and run 
+the producer and consumer instances in isolation:
 
 ```bash
 make kafka-up
 make kafka-topics
 ```
 
-Set the required variables (or put them in `.env`):
+Default values can be overridden by defining environment variables prefixed with
+`AMTAB_`, or by placing them in a `.env` file:
 
 ```bash
 export AMTAB_KAFKA_BOOTSTRAP_SERVERS=localhost:19092
 export AMTAB_DATA_LAKE_PATH=data/bronze
 ```
+
+For a complete list of variables, check the table in the
+[Configuration](#configuration) section.
 
 Start the producer in one terminal:
 
@@ -218,7 +246,6 @@ uv run python streaming/consumer.py --topic vehicle-positions
 Stop them with `Ctrl+C`: the consumer flushes its buffer and commits before
 exiting. Bronze files land under `$AMTAB_DATA_LAKE_PATH/<feed>/dt=YYYY-MM-DD/`.
 
-Redpanda Console is available at `http://localhost:8088`.
 
 ### Running the tests
 
@@ -283,7 +310,7 @@ The 2025 archive is used to match the real-time data period.
 - GCP account with billing enabled
 - [gcloud CLI](https://cloud.google.com/sdk/docs/install)
 - Terraform >= 1.0
-- Docker and Docker Compose v2.14+
+- Docker Engine 25+ and Docker Compose v2.20.2+
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
 - make
