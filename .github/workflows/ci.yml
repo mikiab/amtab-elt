@@ -23,7 +23,7 @@ jobs:
           enable-cache: true
 
       - name: "Install the project"
-        run: uv sync --locked --no-dev --group test
+        run: uv sync --locked --no-default-groups --group test
 
       - name: "Run tests"
         run: uv run --no-sync pytest
@@ -45,7 +45,7 @@ jobs:
           enable-cache: true
 
       - name: "Install the project"
-        run: uv sync --locked --no-dev
+        run: uv sync --locked --no-default-groups --group dbt
 
       - name: "Install dbt packages"
         run: uv run --no-sync dbt deps --project-dir dbt --profiles-dir dbt
