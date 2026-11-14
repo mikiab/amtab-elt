@@ -6,7 +6,7 @@ import sys
 import threading
 import time
 
-from config import FEEDS, FeedConfig, Settings
+from config import FEEDS, FeedConfig, Settings, setup_logging
 from confluent_kafka import Producer
 from feed import FeedUnavailable, fetch_feed
 from stats import Stats
@@ -152,5 +152,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
+    setup_logging()
     settings = Settings()
+    logging.getLogger().setLevel(settings.log_level)
     produce(FEEDS[args.feed], settings)

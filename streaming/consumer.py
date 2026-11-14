@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from config import TOPICS, FeedConfig, Settings
+from config import TOPICS, FeedConfig, Settings, setup_logging
 from confluent_kafka import (
     TIMESTAMP_LOG_APPEND_TIME,
     TIMESTAMP_NOT_AVAILABLE,
@@ -372,8 +372,10 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
+    setup_logging()
     try:
         settings = Settings()
+        logging.getLogger().setLevel(settings.log_level)
         FeedConsumer(TOPICS[args.topic], settings).consume()
     except (
         ParquetWriteError,

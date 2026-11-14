@@ -1,12 +1,24 @@
 # config.py
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import NonNegativeInt, PositiveFloat, PositiveInt
+from pydantic import BeforeValidator, NonNegativeInt, PositiveFloat, PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def setup_logging(level: str = "INFO") -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s [%(feed)s] %(message)s",
+            defaults={"feed": "-"},
+        )
+    )
+    logging.basicConfig(level=level, handlers=[handler])
 
 
 @dataclass(frozen=True)
@@ -38,9 +50,11 @@ class FeedConfig:
 
 
 CompressionType = Literal["none", "gzip", "snappy", "lz4", "zstd"]
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 class Settings(BaseSettings):
+    log_level: Annotated[LogLevel, BeforeValidator(str.upper)] = "INFO"
     kafka_bootstrap_servers: str
 
     # Producer
