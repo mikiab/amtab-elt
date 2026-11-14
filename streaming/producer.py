@@ -2,6 +2,7 @@ import json
 import logging
 import signal
 import socket
+import sys
 import threading
 import time
 
@@ -42,6 +43,7 @@ def produce(feed_config: FeedConfig, settings: Settings):
             "client.id": socket.gethostname(),
         }
     )
+    failed = False
     while not stop_running.is_set():
         count: int = 0
         t0 = time.monotonic()
@@ -108,6 +110,7 @@ def produce(feed_config: FeedConfig, settings: Settings):
                     "reason": exc,
                 },
             )
+            failed = True
             break
 
         logger.info(
@@ -133,6 +136,8 @@ def produce(feed_config: FeedConfig, settings: Settings):
                 "feed": feed_config.name,
             },
         )
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
