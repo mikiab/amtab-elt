@@ -4,20 +4,19 @@ version = "0.2.0"
 description = "AMTAB Bari GTFS/GTFS-RT ELT pipeline"
 requires-python = ">=3.13"
 dependencies = [
-    "dbt-core>=1.10.0",
-    "dbt-bigquery>=1.10.0",
-    "streamlit>=1.55.0",
-    "google-cloud-bigquery>=3.40.1",
-    "plotly>=6.6.0",
     "confluent-kafka>=2.15.0",
     "pydantic>=2.12.5",
     "pyarrow>=23.0.1",
     "pydantic-settings>=2.16.0",
+    "requests>=2.33.0",
 ]
 
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+[tool.uv]
+default-groups = "all"
 
 [dependency-groups]
 dev = [
@@ -27,4 +26,13 @@ dev = [
 test = [
     "pyarrow-stubs>=20.0.0.20260819",
     "pytest>=9.1.1",
+]
+dbt = [
+    "dbt-core>=1.10.0",
+    "dbt-bigquery>=1.10.0",
+]
+dashboard = [
+    "streamlit>=1.55.0",
+    "google-cloud-bigquery>=3.40.1",
+    "plotly>=6.6.0",
 ]

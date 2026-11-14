@@ -1,9 +1,28 @@
-name: redpanda-quickstart-one-broker
+name: amtab-streaming
 networks:
   redpanda_network:
     driver: bridge
 volumes:
   redpanda-0: null
+  data-lake: null
+x-streaming: &streaming
+  image: amtab-streaming:dev
+  build:
+    # pyproject.toml and uv.lock are located in the repo root
+    context: ..
+    dockerfile: streaming/Dockerfile
+  networks:
+    - redpanda_network
+  environment:
+    AMTAB_KAFKA_BOOTSTRAP_SERVERS: redpanda-0:9092
+    AMTAB_FLUSH_MAX_ROWS: ${AMTAB_FLUSH_MAX_ROWS:-5000}
+  depends_on:
+    topic-init:
+      condition: service_completed_successfully
+  # Restart the service if the container returns a non-zero exit code
+  restart: "on-failure:5"
+  # SIGKILL if the service is still running 40 seconds after SIGTERM
+  stop_grace_period: 40s
 services:
   redpanda-0:
     command:
@@ -25,6 +44,8 @@ services:
       - --advertise-rpc-addr redpanda-0:33145
       # Mode dev-container uses well-known configuration properties for development in containers.
       - --mode dev-container
+      # Disable topic auto-creation set by `dev-container`
+      - --set redpanda.auto_create_topics_enabled=false
       # Tells Seastar (the framework Redpanda uses under the hood) to use 1 core on the system.
       - --smp 1
       - --default-log-level=info
@@ -39,6 +60,17 @@ services:
       - 18082:18082
       - 19092:19092
       - 19644:9644
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      # Bootstrap: check every second during the first 30 seconds
+      start_period: 30s
+      start_interval: 1s
+      # Check the cluster every 10 seconds
+      interval: 10s
+      # Unhealthy if a single check takes longer than 5 seconds
+      timeout: 5s
+      # Max retries to consider the cluster unhealthy
+      retries: 5
   console:
     container_name: redpanda-console
     image: docker.redpanda.com/redpandadata/console:v3.10.0
@@ -61,4 +93,45 @@ services:
     ports:
       - 8088:8080
     depends_on:
-      - redpanda-0
+      redpanda-0:
+        condition: service_healthy
+  topic-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.1
+    command:
+      - topic
+      - create
+      - --if-not-exists
+      - -p
+      - "1"
+      - -r
+      - "1"
+      - -c
+      - retention.ms=604800000
+      - -X
+      - brokers=redpanda-0:9092
+      - vehicle-positions
+      - trip-updates
+      - vehicle-positions.dlq
+      - trip-updates.dlq
+    networks:
+      - redpanda_network
+    depends_on:
+      redpanda-0:
+        # Wait for the healthcheck, not just the service starting
+        condition: service_healthy
+  producer-vehicles:
+    <<: *streaming
+    command: ["python", "producer.py", "--feed", "vehicles"]
+  producer-trips:
+    <<: *streaming
+    command: ["python", "producer.py", "--feed", "trips"]
+  consumer-vehicles:
+    <<: *streaming
+    volumes:
+      - data-lake:/data/bronze
+    command: ["python", "consumer.py", "--topic", "vehicle-positions"]
+  consumer-trips:
+    <<: *streaming
+    volumes:
+      - data-lake:/data/bronze
+    command: ["python", "consumer.py", "--topic", "trip-updates"]

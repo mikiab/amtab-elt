@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-from config import TOPICS, FeedConfig, Settings
+from config import TOPICS, FeedConfig, Settings, setup_logging
 from confluent_kafka import (
     TIMESTAMP_LOG_APPEND_TIME,
     TIMESTAMP_NOT_AVAILABLE,
@@ -132,7 +132,7 @@ def to_row(msg: Message) -> tuple[date, dict]:
 class Buffer:
     """Buffer structure for storing records to be consumed"""
 
-    def __init__(self, max_batch_size=5000, t_interval=60 * 60):
+    def __init__(self, max_batch_size, t_interval):
         # the key is (feed, date) because we have a single consumer for both feeds
         self._buffer: dict[tuple[str, date], list[dict]] = {}
         self._max_batch_size: int = max_batch_size
@@ -211,7 +211,10 @@ class FeedConsumer:
     def __init__(self, feed_config: FeedConfig, settings: Settings):
         self.feed_config: FeedConfig = feed_config
         self.settings: Settings = settings
-        self.buffer: Buffer = Buffer()
+        self.buffer: Buffer = Buffer(
+            max_batch_size=settings.flush_max_rows,
+            t_interval=settings.flush_interval_s,
+        )
         self.stats: Stats = Stats()
         self.logger = logging.LoggerAdapter(
             logger, extra={"feed": self.feed_config.topic}, merge_extra=True
@@ -369,8 +372,10 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
+    setup_logging()
     try:
         settings = Settings()
+        logging.getLogger().setLevel(settings.log_level)
         FeedConsumer(TOPICS[args.topic], settings).consume()
     except (
         ParquetWriteError,

@@ -88,19 +88,25 @@ wheels = [
 name = "amtab-elt"
 version = "0.2.0"
 source = { virtual = "." }
+default-groups = "all"
 dependencies = [
     { name = "confluent-kafka" },
-    { name = "dbt-bigquery" },
-    { name = "dbt-core" },
-    { name = "google-cloud-bigquery" },
-    { name = "plotly" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "streamlit" },
+    { name = "requests" },
 ]
 
 [package.dev-dependencies]
+dashboard = [
+    { name = "google-cloud-bigquery" },
+    { name = "plotly" },
+    { name = "streamlit" },
+]
+dbt = [
+    { name = "dbt-bigquery" },
+    { name = "dbt-core" },
+]
 dev = [
     { name = "apache-airflow" },
     { name = "duckdb" },
@@ -113,17 +119,22 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "confluent-kafka", specifier = ">=2.15.0" },
-    { name = "dbt-bigquery", specifier = ">=1.10.0" },
-    { name = "dbt-core", specifier = ">=1.10.0" },
-    { name = "google-cloud-bigquery", specifier = ">=3.40.1" },
-    { name = "plotly", specifier = ">=6.6.0" },
     { name = "pyarrow", specifier = ">=23.0.1" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.16.0" },
-    { name = "streamlit", specifier = ">=1.55.0" },
+    { name = "requests", specifier = ">=2.33.0" },
 ]
 
 [package.metadata.requires-dev]
+dashboard = [
+    { name = "google-cloud-bigquery", specifier = ">=3.40.1" },
+    { name = "plotly", specifier = ">=6.6.0" },
+    { name = "streamlit", specifier = ">=1.55.0" },
+]
+dbt = [
+    { name = "dbt-bigquery", specifier = ">=1.10.0" },
+    { name = "dbt-core", specifier = ">=1.10.0" },
+]
 dev = [
     { name = "apache-airflow", specifier = ">=3.1.8" },
     { name = "duckdb", specifier = ">=1.5.1" },

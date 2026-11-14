@@ -2,18 +2,17 @@ import json
 import logging
 import signal
 import socket
+import sys
 import threading
 import time
 
-from config import FEEDS, FeedConfig, Settings
+from config import FEEDS, FeedConfig, Settings, setup_logging
 from confluent_kafka import Producer
 from feed import FeedUnavailable, fetch_feed
 from stats import Stats
 
 logger = logging.getLogger(__name__)
 
-
-GTFS_RT_URI = "https://avl.amtab.it/WSExportGTFS_RT/api/gtfs"
 
 stop_running = threading.Event()
 
@@ -44,6 +43,7 @@ def produce(feed_config: FeedConfig, settings: Settings):
             "client.id": socket.gethostname(),
         }
     )
+    failed = False
     while not stop_running.is_set():
         count: int = 0
         t0 = time.monotonic()
@@ -110,6 +110,7 @@ def produce(feed_config: FeedConfig, settings: Settings):
                     "reason": exc,
                 },
             )
+            failed = True
             break
 
         logger.info(
@@ -135,6 +136,8 @@ def produce(feed_config: FeedConfig, settings: Settings):
                 "feed": feed_config.name,
             },
         )
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
@@ -149,5 +152,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
+    setup_logging()
     settings = Settings()
+    logging.getLogger().setLevel(settings.log_level)
     produce(FEEDS[args.feed], settings)

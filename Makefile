@@ -5,13 +5,9 @@ export BQ_DATASET ?= amtab_transit
 DBT_FLAGS = --project-dir dbt --profiles-dir dbt
 
 STREAMING = ./streaming
-REDPANDA_VERSION = v26.2.1
-REDPANDA_CONSOLE_VERSION = v3.10.0
-KAFKA_TOPICS = vehicle-positions trip-updates \
-	       vehicle-positions.dlq trip-updates.dlq
 
 .PHONY: setup airflow-up airflow-down dbt dbt-docs dashboard \
-	kafka-up kafka-down kafka-topics
+	kafka-up kafka-topics down up
 
 setup:
 	uv sync
@@ -39,13 +35,13 @@ dashboard:
 	uv run streamlit run streamlit/app.py
 
 kafka-up:
-	@echo "Starting redpanda $(REDPANDA_VERSION)"
-	docker compose --project-directory $(STREAMING) up -d
+	docker compose --project-directory $(STREAMING) up --wait console
 
 kafka-topics:
-	@echo "Creating topics"
-	docker exec redpanda-0 rpk topic create $(KAFKA_TOPICS)
+	docker compose --project-directory $(STREAMING) up topic-init
 
-kafka-down:
-	@echo "Stopping redpanda"
-	docker compose --project-directory $(STREAMING) down -v
+down:
+	docker compose --project-directory $(STREAMING) down
+
+up:
+	docker compose --project-directory $(STREAMING) up --build --wait

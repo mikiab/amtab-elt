@@ -1,12 +1,24 @@
 # config.py
 
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import NonNegativeInt, PositiveFloat
+from pydantic import BeforeValidator, NonNegativeInt, PositiveFloat, PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def setup_logging(level: str = "INFO") -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s [%(feed)s] %(message)s",
+            defaults={"feed": "-"},
+        )
+    )
+    logging.basicConfig(level=level, handlers=[handler])
 
 
 @dataclass(frozen=True)
@@ -38,15 +50,21 @@ class FeedConfig:
 
 
 CompressionType = Literal["none", "gzip", "snappy", "lz4", "zstd"]
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 
 class Settings(BaseSettings):
+    log_level: Annotated[LogLevel, BeforeValidator(str.upper)] = "INFO"
     kafka_bootstrap_servers: str
 
     # Producer
     kafka_linger_ms: NonNegativeInt = 100
     kafka_compression_type: CompressionType = "lz4"
     poll_interval_s: PositiveFloat = 30.0
+
+    # Consumer
+    flush_max_rows: PositiveInt = 5000
+    flush_interval_s: PositiveInt = 3600
 
     # HTTP
     http_timeout_s: PositiveFloat = 10.0
@@ -80,9 +98,11 @@ class Settings(BaseSettings):
         }
 
 
+GTFS_RT_URL = "https://avl.amtab.it/WSExportGTFS_RT/api/gtfs"
+
 VEHICLES = FeedConfig(
     name="vehicles",
-    url=os.getenv("FEED_VEHICLES_URL", ""),
+    url=os.getenv("FEED_VEHICLES_URL", GTFS_RT_URL + "/VehiclePosition"),
     topic="vehicle-positions",
     dlq_topic="vehicle-positions.dlq",
     entity_field="Vehicle",
@@ -90,7 +110,7 @@ VEHICLES = FeedConfig(
 
 TRIPS = FeedConfig(
     name="trips",
-    url=os.getenv("FEED_TRIPS_URL", ""),
+    url=os.getenv("FEED_TRIPS_URL", GTFS_RT_URL + "/TripUpdates"),
     topic="trip-updates",
     dlq_topic="trip-updates.dlq",
     entity_field="TripUpdate",
