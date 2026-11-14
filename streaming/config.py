@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import NonNegativeInt, PositiveFloat
+from pydantic import NonNegativeInt, PositiveFloat, PositiveInt
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     kafka_compression_type: CompressionType = "lz4"
     poll_interval_s: PositiveFloat = 30.0
 
+    # Consumer
+    flush_max_rows: PositiveInt = 5000
+    flush_interval_s: PositiveInt = 3600
+
     # HTTP
     http_timeout_s: PositiveFloat = 10.0
     http_max_retries: NonNegativeInt = 3
@@ -80,9 +84,11 @@ class Settings(BaseSettings):
         }
 
 
+GTFS_RT_URL = "https://avl.amtab.it/WSExportGTFS_RT/api/gtfs"
+
 VEHICLES = FeedConfig(
     name="vehicles",
-    url=os.getenv("FEED_VEHICLES_URL", ""),
+    url=os.getenv("FEED_VEHICLES_URL", GTFS_RT_URL + "/VehiclePosition"),
     topic="vehicle-positions",
     dlq_topic="vehicle-positions.dlq",
     entity_field="Vehicle",
@@ -90,7 +96,7 @@ VEHICLES = FeedConfig(
 
 TRIPS = FeedConfig(
     name="trips",
-    url=os.getenv("FEED_TRIPS_URL", ""),
+    url=os.getenv("FEED_TRIPS_URL", GTFS_RT_URL + "/TripUpdates"),
     topic="trip-updates",
     dlq_topic="trip-updates.dlq",
     entity_field="TripUpdate",

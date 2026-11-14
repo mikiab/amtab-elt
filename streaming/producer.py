@@ -13,8 +13,6 @@ from stats import Stats
 logger = logging.getLogger(__name__)
 
 
-GTFS_RT_URI = "https://avl.amtab.it/WSExportGTFS_RT/api/gtfs"
-
 stop_running = threading.Event()
 
 

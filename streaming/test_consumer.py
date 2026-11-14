@@ -150,7 +150,7 @@ def test_to_row_raise_configuration_error():
 
 # -- Case 1: never flush an empty buffer
 def test_buffer_empty_flush():
-    buf = Buffer()
+    buf = Buffer(max_batch_size=5000, t_interval=3600)
     assert not buf.should_flush(0)
     assert not buf.should_flush(1000)
 
@@ -159,7 +159,7 @@ def test_buffer_empty_flush():
 def test_buffer_flush():
     row = {"feed": "vehicles"}
     dt = date(2026, 9, 29)
-    buf = Buffer(t_interval=300)
+    buf = Buffer(max_batch_size=5000, t_interval=300)
     buf.add(dt, row, 0)
     assert not buf.should_flush(299)
     assert buf.should_flush(300)
@@ -169,7 +169,7 @@ def test_buffer_flush():
 def test_buffer_max_size_flush():
     row = {"feed": "vehicles"}
     dt = date(2026, 9, 29)
-    buf = Buffer(max_batch_size=2)
+    buf = Buffer(max_batch_size=2, t_interval=3600)
     for _ in range(2):
         buf.add(dt, row, 0)
     assert buf.should_flush(0)
@@ -358,7 +358,6 @@ FakeConsumer imitates the parts of confluent_kafka.Consumer that FeedConsumer us
   - commit(asynchronous=False) raises the scripted errors in order, then succeeds
   - close() calls on_revoke, like the real client does when it leaves the group
 
-
 `running` is a module global: stop the loop from `on_exhausted`, e.g.
     FakeConsumer(..., on_exhausted=lambda: monkeypatch.setattr(consumer_module, "running", False))
 """
@@ -403,7 +402,7 @@ def create_fake_consumer(monkeypatch: MonkeyPatch):
 def test_commit_error(create_fake_consumer, make_settings):
     fake: FakeConsumer = create_fake_consumer(
         batches=[
-            # 1st consume() call returns only one message
+            # first consume() call returns only one message
             [Message(**VALID)]
         ],
         commit_errors=[retriable_error()] * 6,
@@ -418,7 +417,7 @@ def test_commit_error(create_fake_consumer, make_settings):
 def test_commit_success(create_fake_consumer, make_settings):
     fake: FakeConsumer = create_fake_consumer(
         batches=[
-            # 1st consume() call returns only one message
+            # first consume() call returns only one message
             [Message(**VALID)]
         ],
         commit_errors=[retriable_error()] * 2,
@@ -433,7 +432,7 @@ def test_commit_success(create_fake_consumer, make_settings):
 def test_attempts_on_error(create_fake_consumer, make_settings):
     fake: FakeConsumer = create_fake_consumer(
         batches=[
-            # 1st consume() call returns only one message
+            # first consume() call returns only one message
             [Message(**VALID)]
         ],
         commit_errors=[unknown_error()],
@@ -448,7 +447,7 @@ def test_attempts_on_error(create_fake_consumer, make_settings):
 def test_commit_on_shutdown(create_fake_consumer, make_settings, tmp_path: Path):
     fake: FakeConsumer = create_fake_consumer(
         batches=[
-            # 1st consume() call returns only one message
+            # first consume() call returns only one message
             [Message(**VALID)]
         ],
     )
@@ -470,7 +469,7 @@ def test_final_write_failure(
 
     fake: FakeConsumer = create_fake_consumer(
         batches=[
-            # 1st consume() call returns only one message
+            # first consume() call returns only one message
             [Message(**VALID)]
         ],
     )
@@ -480,6 +479,13 @@ def test_final_write_failure(
     # a failed write must prevent any commit attempt
     assert fake.commit_attempts == 0
     assert not list(tmp_path.rglob("*.parquet"))
+
+
+# -- Check if FeedConsumer hands flush_max_rows to its buffer
+def test_flush_max_rows(make_settings):
+    settings = make_settings(flush_max_rows=123)
+    consumer = FeedConsumer(VEHICLES, settings)
+    assert consumer.buffer._max_batch_size == 123
 
 
 ################################################################################
