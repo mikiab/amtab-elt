@@ -142,19 +142,7 @@ The streaming path polls AMTAB's live GTFS-RT feeds, publishes every entity to
 Kafka, and lands the raw records in a **Bronze** layer of date-partitioned 
 Parquet files. The batch pipeline is unchanged.
 
-```mermaid
-flowchart LR
-    API[AMTAB GTFS-RT<br/>REST API] --> PV[Producer<br/>vehicle positions]
-    API --> PT[Producer<br/>trip updates]
-    PV --> TV[(topic<br/>vehicle-positions)]
-    PT --> TT[(topic<br/>trip-updates)]
-    TV --> CV[FeedConsumer<br/>vehicles]
-    TT --> CT[FeedConsumer<br/>trip updates]
-    CV --> B[Bronze Parquet<br/>streaming/&lt;feed&gt;/dt=YYYY-MM-DD/]
-    CT --> B
-    CV -.planned.-> DLQ[(DLQ topics)]
-    CT -.planned.-> DLQ
-```
+![streaming pipeline](./pipeline_diagram_streaming.drawio.png "AMTAB streaming ingestion")
 
 The diagram shows the architecture: two topics are fed by two producer
 processes and read by two consumers, each in its own consumer group.
