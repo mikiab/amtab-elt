@@ -27,6 +27,115 @@ The pipeline architecture is shown below:
 
 ![pipeline](./pipeline_diagram_elt.png "AMTAB ELT Pipeline")
 
+## Dataset
+
+### GTFS-RT (Real-Time)
+
+Historical GTFS-RT snapshots were collected from AMTAB's real-time feed at
+~30-second intervals. The collection script was run at specific periods of the
+day, so the dataset doesn't cover the full 24-hour service window.
+
+The GTFS-RT specification has two entity types:
+
+- **TripUpdate** which stores delay information per trip and stop
+(arrival/departure delay in minutes)
+- **VehiclePosition** which stores the GPS coordinates, speed, and current stop
+for each active bus.
+
+The dataset covers the period from June 2025 to March 2026. This project uses
+October to December 2025.
+
+Data is stored as Hive-partitioned JSON files (format `dt=YYYY-MM-DD/hour=HH/`)
+and distributed as monthly tar.gz archives via GitHub Releases.
+
+### GTFS Static
+
+The GTFS static archive contains scheduled data from AMTAB: routes, stops,
+trips, stop times, calendar, shapes, and feed info.
+
+It is distributed as a zip of CSV files and updated annually in December.
+
+The 2025 archive is used to match the real-time data period.
+
+## Batch pipeline
+
+### Pipeline Software Components
+
+| Component | Tool | Purpose |
+|-----------|------|---------|
+| IaC | Terraform | Provision GCS bucket, BigQuery dataset, service account |
+| Orchestration | Airflow 3 | Schedule and monitor pipeline DAGs |
+| Data Lake | GCS | Store processed Parquet files |
+| Raw Archive | GitHub Releases | Immutable storage for original JSON and static GTFS archives |
+| Warehouse | BigQuery | Analytical queries via external and native tables |
+| Transformation | dbt | SQL models (staging, intermediate, mart) |
+| Data Quality | dbt tests + dbt utils | Not-null, uniqueness, range, and deduplication checks |
+| Dashboard | Streamlit | Visualize OTP metrics with Plotly charts |
+| Processing | DuckDB | JSON to Parquet conversion inside Airflow tasks |
+| Package Management | uv | Python dependency management and virtual environment |
+
+### dbt Lineage
+
+![dbt lineage](./dbt-dag.png "dbt Lineage Graph")
+
+### Data Quality
+
+The project ensures **data quality** in all models at different layers: staging,
+intermediate and mart.
+
+The checks for the *staging* models include:
+- Not null keys,
+- Accepted values for the delay, latitude, longitude and speed columns,
+- Warning message in the case of *duplicates*,
+- Route ID normalization via a **seed mapping** (`route_id_mapping.csv`) to
+  align real-time and static identifiers.
+
+The checks for the *intermediate* models include:
+- **Deduplications** to allow only one observation per trip/stop/day,
+- Filtering trips with null delay,
+- **Uniqueness** on composite key.
+
+The checks for the *mart* model include:
+- **Uniqueness** on composite key.
+
+### Partitioning & Clustering
+
+The `mart_otp_summary` table is **partitioned by date** and **clustered by
+route**.
+
+The dashboard's primary interaction is a date range picker. Partitioning by date
+means BigQuery only scans the date range the user selected, not the entire table.
+
+With some months of daily data across multiple routes, this reduces query costs
+and latency.
+
+Furthermore, within a date partition, the most common filter is by **route**.
+**Clustering** physically co-locates rows for the same route, so queries that
+filter by route read fewer bytes and the Streamlit dashboard benefits from this.
+
+The BigQuery mart table uses an **incremental strategy** to overwrite the entire
+partitions on each dbt run, preventing duplicates without row-level merging.
+
+### BigQuery Table Strategy
+
+Real-time data (TripUpdate, VehiclePosition) is stored as Parquet on GCS and
+exposed via **external tables**. External tables avoid data duplication: dbt
+reads from GCS directly. Since only dbt queries these tables (not the
+dashboard), the lack of caching is acceptable.
+
+Static GTFS data (routes, stops, stop_times, etc.) is loaded as **native
+tables**. These are small, rarely change, and benefit from BigQuery's columnar
+storage and caching.
+
+### Dashboard
+
+The dashboard queries `mart_otp_summary` in BigQuery and provides two tiles
+filterable by date range and route.
+
+![Daily OTP trend](./dashboard-tile-1.png "Daily On-Time Performance")
+
+![Worst routes](./dashboard-tile-2.png "Worst Routes by OTP")
+
 ## Streaming Ingestion (in progress)
 
 The streaming path polls AMTAB's live GTFS-RT feeds, publishes every entity to 
@@ -85,7 +194,6 @@ The bronze schema is the following:
 | `kafka_key` | string | Kafka |
 | `kafka_event_ts` | timestamp ms (UTC) | Kafka |
 | `payload` | string (JSON) | the GTFS-RT entity |
-
 
 ### Delivery semantics: at-least-once
  
@@ -189,7 +297,29 @@ the process immediately with a `ValidationError` that names the field.
 | `AMTAB_HTTP_MAX_RETRIES` | `3` | Retries of a failed feed request; `0` disables them |
 | `AMTAB_HTTP_BACKOFF_BASE_S` | `1.0` | Base of the exponential backoff between retries, in seconds |
 
-### Running locally
+## Running the project
+
+### Prerequisites
+
+Streaming and batch:
+- Docker Engine 25+ and Docker Compose v2.20.2+
+- make
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/)
+
+Only batch:
+- GCP account with billing enabled
+- [gcloud CLI](https://cloud.google.com/sdk/docs/install)
+- Terraform >= 1.0
+
+Clone the repository:
+
+```bash
+git clone https://github.com/mikiab/amtab-elt.git
+cd amtab-elt
+```
+
+### Streaming (local)
 
 Start Redpanda, create the topics and run the producers and consumers for both
 the `vehicle-positions` and `trip-updates` topics:
@@ -233,7 +363,6 @@ For a complete list of variables, check the table in the
 Start the producer in one terminal:
 
 ```bash
-export FEED_VEHICLES_URL="https://avl.amtab.it/WSExportGTFS_RT/api/gtfs/VehiclePosition"
 uv run python streaming/producer.py --feed vehicles
 ```
 
@@ -246,7 +375,6 @@ uv run python streaming/consumer.py --topic vehicle-positions
 Stop them with `Ctrl+C`: the consumer flushes its buffer and commits before
 exiting. Bronze files land under `$AMTAB_DATA_LAKE_PATH/<feed>/dt=YYYY-MM-DD/`.
 
-
 ### Running the tests
 
 The streaming code lives in `streaming/`. 
@@ -258,62 +386,7 @@ consumer's commit and failure paths with a fake Kafka consumer:
 uv run pytest
 ```
 
-## Dataset
-
-### GTFS-RT (Real-Time)
-
-Historical GTFS-RT snapshots were collected from AMTAB's real-time feed at
-~30-second intervals. The collection script was run at specific periods of the
-day, so the dataset doesn't cover the full 24-hour service window.
-
-The GTFS-RT specification has two entity types:
-
-- **TripUpdate** which stores delay information per trip and stop
-(arrival/departure delay in minutes)
-- **VehiclePosition** which stores the GPS coordinates, speed, and current stop
-for each active bus.
-
-The dataset covers the period from June 2025 to March 2026. This project uses
-October to December 2025.
-
-Data is stored as Hive-partitioned JSON files (format `dt=YYYY-MM-DD/hour=HH/`)
-and distributed as monthly tar.gz archives via GitHub Releases.
-
-### GTFS Static
-
-The GTFS static archive contains scheduled data from AMTAB: routes, stops,
-trips, stop times, calendar, shapes, and feed info.
-
-It is distributed as a zip of CSV files and updated annually in December.
-
-The 2025 archive is used to match the real-time data period.
-
-## Pipeline Software Components
-
-| Component | Tool | Purpose |
-|-----------|------|---------|
-| IaC | Terraform | Provision GCS bucket, BigQuery dataset, service account |
-| Orchestration | Airflow 3 | Schedule and monitor pipeline DAGs |
-| Data Lake | GCS | Store processed Parquet files |
-| Raw Archive | GitHub Releases | Immutable storage for original JSON and static GTFS archives |
-| Warehouse | BigQuery | Analytical queries via external and native tables |
-| Transformation | dbt | SQL models (staging, intermediate, mart) |
-| Data Quality | dbt tests + dbt utils | Not-null, uniqueness, range, and deduplication checks |
-| Dashboard | Streamlit | Visualize OTP metrics with Plotly charts |
-| Processing | DuckDB | JSON to Parquet conversion inside Airflow tasks |
-| Package Management | uv | Python dependency management and virtual environment |
-
-## Setup Instructions
-
-### Prerequisites
-
-- GCP account with billing enabled
-- [gcloud CLI](https://cloud.google.com/sdk/docs/install)
-- Terraform >= 1.0
-- Docker Engine 25+ and Docker Compose v2.20.2+
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/)
-- make
+### Batch on GCP
 
 All commands below run from the project root, except Terraform (step 3)
 which runs from the `terraform/` directory.
@@ -325,17 +398,15 @@ The `Makefile` defaults to `GCP_PROJECT_ID=amtab-elt` and
 make dbt GCP_PROJECT_ID=my-project BQ_DATASET=my_dataset
 ```
 
-### 1. Initial setup
+#### 1. Initial setup
 
-Clone the repository and install Python dependencies:
+Install Python dependencies:
 
 ```bash
-git clone https://github.com/mikiab/amtab-elt.git
-cd amtab-elt
 make setup
 ```
 
-### 2. GCP project setup
+#### 2. GCP project setup
 
 Create a GCP project and enable the required APIs:
 
@@ -355,7 +426,7 @@ Authenticate Terraform with your GCP account:
 gcloud auth application-default login
 ```
 
-### 3. Terraform
+#### 3. Terraform
 
 Terraform provisions the GCS bucket, BigQuery dataset, service account, and SA
 key.
@@ -373,7 +444,7 @@ The SA key is written to `keys/sa-key.json`.
 
 **NOTE:** The files in the `keys` folder are git ignored for security reasons.
 
-### 4. Airflow
+#### 4. Airflow
 
 Airflow is used to orchestrate the pipeline and it's executed locally via
 Docker Compose.
@@ -404,7 +475,7 @@ monitor DAGs (username: `airflow`, password: `airflow`).
 > production. A production deployment would require secret management (e.g. GCP
 > Secret Manager), TLS termination, and role-based access control.
 
-### 5. Run DAGs
+#### 5. Run DAGs
 
 In the Airflow UI, perform the following actions:
 
@@ -417,7 +488,7 @@ In the Airflow UI, perform the following actions:
   GitHub, extracts and loads CSVs into BigQuery. Accepts a `year` parameter
   (default: 2025). Run once.
 
-### 6. dbt
+#### 6. dbt
 
 ```bash
 make dbt
@@ -429,73 +500,11 @@ To browse the documentation and lineage graph:
 make dbt-docs
 ```
 
-### 7. Dashboard
+#### 7. Dashboard
 
 ```bash
 make dashboard
 ```
-
-## dbt Lineage
-
-![dbt lineage](./dbt-dag.png "dbt Lineage Graph")
-
-## Data Quality
-
-The project ensures **data quality** in all models at different layers: staging,
-intermediate and mart.
-
-The checks for the *staging* models include:
-- Not null keys,
-- Accepted values for the delay, latitude, longitude and speed columns,
-- Warning message in the case of *duplicates*,
-- Route ID normalization via a **seed mapping** (`route_id_mapping.csv`) to
-  align real-time and static identifiers.
-
-The checks for the *intermediate* models include:
-- **Deduplications** to allow only one observation per trip/stop/day,
-- Filtering trips with null delay,
-- **Uniqueness** on composite key.
-
-The checks for the *mart* model include:
-- **Uniqueness** on composite key.
-
-## Partitioning & Clustering
-
-The `mart_otp_summary` table is **partitioned by date** and **clustered by
-route**.
-
-The dashboard's primary interaction is a date range picker. Partitioning by date
-means BigQuery only scans the date range the user selected, not the entire table.
-
-With some months of daily data across multiple routes, this reduces query costs
-and latency.
-
-Furthermore, within a date partition, the most common filter is by **route**.
-**Clustering** physically co-locates rows for the same route, so queries that
-filter by route read fewer bytes and the Streamlit dashboard benefits from this.
-
-The BigQuery mart table uses an **incremental strategy** to overwrite the entire
-partitions on each dbt run, preventing duplicates without row-level merging.
-
-## BigQuery Table Strategy
-
-Real-time data (TripUpdate, VehiclePosition) is stored as Parquet on GCS and
-exposed via **external tables**. External tables avoid data duplication: dbt
-reads from GCS directly. Since only dbt queries these tables (not the
-dashboard), the lack of caching is acceptable.
-
-Static GTFS data (routes, stops, stop_times, etc.) is loaded as **native
-tables**. These are small, rarely change, and benefit from BigQuery's columnar
-storage and caching.
-
-## Dashboard
-
-The dashboard queries `mart_otp_summary` in BigQuery and provides two tiles
-filterable by date range and route.
-
-![Daily OTP trend](./dashboard-tile-1.png "Daily On-Time Performance")
-
-![Worst routes](./dashboard-tile-2.png "Worst Routes by OTP")
 
 ## License
 
